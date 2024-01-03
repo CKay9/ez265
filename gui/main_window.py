@@ -65,7 +65,6 @@ class MainWindow:
         self.canvas.grid(row=2, column=0, columnspan=3, sticky='nsew')
         self.scrollbar.grid(row=2, column=3, sticky='ns')
 
-        # Bind mouse wheel scrolling events
         self.canvas.bind("<MouseWheel>", self.on_mousewheel)
         self.canvas.bind("<Configure>", self.on_canvas_configure)
 
@@ -139,12 +138,13 @@ class MainWindow:
     def setup_buttons(self):
         self.start_button = ttk.Button(self.root,
                                        text="Start Encoding",
-                                       command=self.start_encoding_process)  # Connect the button to the method
+                                       command=self.start_encoding_process)
         self.start_button.grid(row=3, column=0, columnspan=1,
                                pady=(10, 0), padx=(20, 5), sticky='w')
 
         self.stop_button = ttk.Button(self.root, text="Stop",
-                                      command=lambda: stop_encoding(self.update_ui))
+                                      command=lambda:
+                                      stop_encoding(self.update_ui))
         self.stop_button.grid(row=3, column=1, columnspan=1,
                               pady=(10, 0), sticky='w')
 
@@ -159,11 +159,14 @@ class MainWindow:
                                  padx=20, pady=(0, 15), sticky='ew')
 
     def start_encoding_process(self):
-        selected_files = [file for file, var in self.file_vars.items() if var.get() > 0]
+        selected_files = [file for file,
+                          var in self.file_vars.items()
+                          if var.get() > 0]
         output_path = self.output_path.get()
         if selected_files and output_path:
-            start_encoding(self.update_progress, selected_files, output_path, self.update_queue)
-            self.start_button['state'] = 'disabled'  # Optionally disable the button while encoding
+            start_encoding(self.update_progress, selected_files,
+                           output_path, self.update_queue)
+            self.start_button['state'] = 'disabled'
         else:
             logging.info("No files selected or output path not set.")
 
@@ -272,7 +275,6 @@ class MainWindow:
 
 
 def seconds_to_hms(seconds):
-    # Convert seconds to hours, minutes, and seconds
     minutes, seconds = divmod(seconds, 60)
     hours, minutes = divmod(minutes, 60)
     return hours, minutes, seconds
