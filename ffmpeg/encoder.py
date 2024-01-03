@@ -77,9 +77,9 @@ def start_encoding_threaded(selected_files, output_path, update_queue):
                 time_str = match[1]
                 percentage = calculate_percentage(time_str, total_duration)
                 logging.info(f"Current encoding progress: {percentage}")
-                update_queue.put(percentage)  # Update the queue instead of direct UI callback
+                update_queue.put(percentage)
 
         overall_percentage = (index + 1) / total_files * 100
-        update_queue.put(overall_percentage)  # Update the queue with overall progress
+        update_queue.put(overall_percentage)
 
     update_queue.put('done')  # Indicate that encoding is complete
