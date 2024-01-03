@@ -1,6 +1,7 @@
 import glob
 import logging
 import os
+import queue
 import cv2
 import tkinter as tk
 from tkinter import ttk
@@ -11,35 +12,35 @@ from .widgets import start_encoding, stop_encoding
 class MainWindow:
     def __init__(self):
         self.root = tk.Tk()
+        self.setup_window()
+        self.create_variables()
+        self.setup_ui()
+        self.update_queue = queue.Queue()
+        self.check_queue()
+
+    def setup_window(self):
         self.root.title("ezncode")
         self.root.geometry("800x600")
         self.root.grid_columnconfigure(1, weight=1)
+        self.center_window()
 
+    def create_variables(self):
         self.input_path = tk.StringVar()
         self.output_path = tk.StringVar()
         self.file_vars = {}
-        # Dictionary to store the variables associated with the checkboxes
-
-        self.setup_ui()
-        self.center_window()
-
-    def center_window(self):
-        # Get the screen width and height
-        screen_width = self.root.winfo_screenwidth()
-        screen_height = self.root.winfo_screenheight()
-
-        # Calculate the x and y coordinates based on the screen dimensions
-        x = (screen_width - 800) // 2
-        y = (screen_height - 600) // 2
-
-        # Set the geometry of the tkinter window and position it in the center
-        self.root.geometry(f'800x600+{x}+{y}')
 
     def setup_ui(self):
         self.setup_scrollable_area()
         self.setup_path_selection()
         self.setup_buttons()
         self.setup_progress()
+
+    def center_window(self):
+        screen_width = self.root.winfo_screenwidth()
+        screen_height = self.root.winfo_screenheight()
+        x = (screen_width - 800) // 2
+        y = (screen_height - 600) // 2
+        self.root.geometry(f'800x600+{x}+{y}')
 
     def setup_scrollable_area(self):
         self.canvas = tk.Canvas(self.root)
@@ -71,11 +72,15 @@ class MainWindow:
         self.root.grid_rowconfigure(2, weight=1)
         self.root.grid_columnconfigure(4, weight=0)
 
-        self.check_all_button = tk.Button(self.root, text="Check All", command=self.check_all)
-        self.uncheck_all_button = tk.Button(self.root, text="Uncheck All", command=self.uncheck_all)
+        self.check_all_button = tk.Button(self.root, text="Check All",
+                                          command=self.check_all)
+        self.uncheck_all_button = tk.Button(self.root, text="Uncheck All",
+                                            command=self.uncheck_all)
 
-        self.check_all_button.grid(row=3, column=1, padx=(400, 5), pady=0, sticky='e')
-        self.uncheck_all_button.grid(row=3, column=2, padx=(0, 20), pady=0, sticky='w')
+        self.check_all_button.grid(row=3, column=1,
+                                   padx=(400, 5), pady=0, sticky='e')
+        self.uncheck_all_button.grid(row=3, column=2,
+                                     padx=(0, 20), pady=0, sticky='w')
 
     def on_mousewheel(self, event):
         if event.delta < 0:
@@ -134,16 +139,12 @@ class MainWindow:
     def setup_buttons(self):
         self.start_button = ttk.Button(self.root,
                                        text="Start Encoding",
-                                       command=lambda:
-                                       start_encoding(self.update_progress,
-                                                      self.file_vars,
-                                                      self.output_path))
+                                       command=self.start_encoding_process)  # Connect the button to the method
         self.start_button.grid(row=3, column=0, columnspan=1,
                                pady=(10, 0), padx=(20, 5), sticky='w')
 
         self.stop_button = ttk.Button(self.root, text="Stop",
-                                      command=lambda:
-                                      stop_encoding(self.update_ui))
+                                      command=lambda: stop_encoding(self.update_ui))
         self.stop_button.grid(row=3, column=1, columnspan=1,
                               pady=(10, 0), sticky='w')
 
@@ -156,6 +157,15 @@ class MainWindow:
                                        bg='systemTransparent')
         self.progress_label.grid(row=5, column=0, columnspan=3,
                                  padx=20, pady=(0, 15), sticky='ew')
+
+    def start_encoding_process(self):
+        selected_files = [file for file, var in self.file_vars.items() if var.get() > 0]
+        output_path = self.output_path.get()
+        if selected_files and output_path:
+            start_encoding(self.update_progress, selected_files, output_path, self.update_queue)
+            self.start_button['state'] = 'disabled'  # Optionally disable the button while encoding
+        else:
+            logging.info("No files selected or output path not set.")
 
     def update_ui(self, action):
         if action == 'start':
@@ -175,24 +185,34 @@ class MainWindow:
 
     def update_progress(self, progress_value):
         if progress_value == 'start':
-            # Handle the start of encoding
-            self.set_progress(0)  # Reset progress bar to 0%
-            logging.debug("Encoding started.")
+            self.set_progress(0)
         elif progress_value == 'stop':
-            # Handle the end of encoding
             logging.debug("Encoding stopped.")
         else:
             try:
                 progress_num = float(progress_value)
-                self.root.after(0, lambda: self.set_progress(progress_num))
+                self.set_progress(progress_num)
             except ValueError:
                 logging.debug(
                     f"Non-numerical progress value received: {progress_value}"
                     )
 
+    def check_queue(self):
+        try:
+            while not self.update_queue.empty():
+                percentage = self.update_queue.get_nowait()
+                if percentage == 'done':
+                    break  # Stop checking if encoding is done
+                self.update_progress(percentage)  # Update the progress bar
+        except queue.Empty:
+            pass
+        finally:
+            # Schedule this method to be called again after 100ms
+            self.root.after(100, self.check_queue)
+
     def set_progress(self, progress_value):
         logging.debug(f"Setting progress to: {progress_value}%")
-        self.progress['value'] = progress_value  # Update progress bar
+        self.progress['value'] = progress_value
         self.progress_label.config(text=f"{progress_value:.2f}%")
 
     def update_file_list(self):
@@ -233,7 +253,10 @@ class MainWindow:
             frame = tk.Frame(self.scrollable_frame)
             frame.pack(anchor='w')
 
-            label_text = f"{file_name}\nSize: {file_size_mb:.2f} MB\nLength: {hours}h {minutes}m {seconds}s"
+            label_text = (
+                f"{file_name}\n          Size: {file_size_mb:.2f} MB\n\
+                    Length: {hours}h {minutes}m {seconds}s"
+                )
             label = tk.Label(frame, text=label_text, justify='left')
             label.pack(side='right')
 
